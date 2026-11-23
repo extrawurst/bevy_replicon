@@ -324,14 +324,12 @@ fn apply_buffered_mutations(
     buffered_mutations: &mut BufferedMutations,
 ) {
     let update_tick = *world.resource::<ServerUpdateTick>();
-    let mut held_receive = None;
     buffered_mutations.retain_mut(|mutate| {
-        if held_receive.is_some_and(|receive| mutate.receive > receive) {
+        if mutate.update_tick.is_newer(*update_tick) {
             return true;
         }
 
-        if mutate.update_tick.is_newer(*update_tick) || !should_apply_mutate(world, mutate) {
-            held_receive.get_or_insert(mutate.receive);
+        if !should_apply_mutate(world, mutate) {
             return true;
         }
 
@@ -1124,8 +1122,8 @@ struct BufferedUpdate {
 /// Cached buffered mutate messages, used to synchronize mutations with update messages.
 ///
 /// Sorted by receive, then by message tick descending. Messages from an earlier receive were
-/// acknowledged, so newer ones may lack their data: they're applied first, and while one is
-/// held back, so are all later receives. Within a receive, outdated data is skipped per entity.
+/// acknowledged, so newer ones may lack their data and they're applied first.
+/// Within a receive, outdated data is skipped per entity.
 #[derive(Resource, Default, Deref, DerefMut)]
 pub(crate) struct BufferedMutations {
     #[deref]
