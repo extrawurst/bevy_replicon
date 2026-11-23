@@ -988,6 +988,129 @@ fn buffering() {
 }
 
 #[test]
+fn buffered_not_lost_to_newer() {
+    let mut server_app = App::new();
+    let mut client_app = App::new();
+    for app in [&mut server_app, &mut client_app] {
+        app.add_plugins((
+            MinimalPlugins,
+            StatesPlugin,
+            RepliconPlugins.set(ServerPlugin::new(PostUpdate)),
+        ))
+        .replicate::<BoolComponent>()
+        .replicate::<VecComponent>()
+        .finish();
+    }
+
+    server_app.connect_client(&mut client_app);
+
+    let server_entity = server_app
+        .world_mut()
+        .spawn((Replicated, BoolComponent(false), VecComponent::default()))
+        .id();
+
+    server_app.update();
+    server_app.exchange_with_client(&mut client_app);
+    client_app.update();
+    server_app.exchange_with_client(&mut client_app);
+
+    // Buffer and acknowledge the mutation, as if its update message were lost.
+    let mut update_tick = client_app.world_mut().resource_mut::<ServerUpdateTick>();
+    let previous_tick = *update_tick;
+    *update_tick = Default::default();
+    server_app
+        .world_mut()
+        .get_mut::<BoolComponent>(server_entity)
+        .unwrap()
+        .0 = true;
+
+    server_app.update();
+    server_app.exchange_with_client(&mut client_app);
+    client_app.update();
+    server_app.exchange_with_client(&mut client_app);
+
+    server_app
+        .world_mut()
+        .get_mut::<VecComponent>(server_entity)
+        .unwrap()
+        .0 = vec![1];
+
+    server_app.update();
+    server_app.exchange_with_client(&mut client_app);
+    client_app.update();
+
+    *client_app.world_mut().resource_mut::<ServerUpdateTick>() = previous_tick;
+    client_app.update();
+
+    let component = client_app
+        .world_mut()
+        .query::<&BoolComponent>()
+        .single(client_app.world())
+        .unwrap();
+    assert!(component.0);
+}
+
+#[test]
+fn buffered_not_lost_to_insertion() {
+    let mut server_app = App::new();
+    let mut client_app = App::new();
+    for app in [&mut server_app, &mut client_app] {
+        app.add_plugins((
+            MinimalPlugins,
+            StatesPlugin,
+            RepliconPlugins.set(ServerPlugin::new(PostUpdate)),
+        ))
+        .replicate::<BoolComponent>()
+        .replicate::<TestComponent>()
+        .finish();
+    }
+
+    server_app.connect_client(&mut client_app);
+
+    let server_entity = server_app
+        .world_mut()
+        .spawn((Replicated, BoolComponent(false)))
+        .id();
+
+    server_app.update();
+    server_app.exchange_with_client(&mut client_app);
+    client_app.update();
+    server_app.exchange_with_client(&mut client_app);
+
+    // Buffer and acknowledge the mutation, as if its update message were lost.
+    let mut update_tick = client_app.world_mut().resource_mut::<ServerUpdateTick>();
+    let previous_tick = *update_tick;
+    *update_tick = Default::default();
+    server_app
+        .world_mut()
+        .get_mut::<BoolComponent>(server_entity)
+        .unwrap()
+        .0 = true;
+
+    server_app.update();
+    server_app.exchange_with_client(&mut client_app);
+    client_app.update();
+    server_app.exchange_with_client(&mut client_app);
+
+    server_app
+        .world_mut()
+        .entity_mut(server_entity)
+        .insert(TestComponent);
+
+    server_app.update();
+    server_app.exchange_with_client(&mut client_app);
+    *client_app.world_mut().resource_mut::<ServerUpdateTick>() = previous_tick;
+    client_app.update();
+
+    let component = client_app
+        .world_mut()
+        .query_filtered::<&BoolComponent, With<TestComponent>>()
+        .single(client_app.world())
+        .unwrap();
+    assert!(component.0);
+}
+
+#[test]
 fn old_ignored() {
     let mut server_app = App::new();
     let mut client_app = App::new();

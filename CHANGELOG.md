@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Don't lose acknowledged mutations that were buffered while waiting for their update message.
+
 ## [0.44.1] - 2026-09-14
 
 ### Added
